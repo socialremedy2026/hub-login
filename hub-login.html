@@ -101,14 +101,7 @@
     background: rgba(46,204,113,0.1); border-radius: 2px; border: 1px solid rgba(46,204,113,0.3);
   }
   .footer-note { text-align: center; margin-top: 32px; font-size: 11px; color: rgba(255,255,255,0.2); }
-  .step { display: none; }
-  .step.active { display: block; }
-  .back-link {
-    display: inline-block; margin-top: 16px; font-size: 11px;
-    color: rgba(255,255,255,0.3); cursor: pointer; letter-spacing: 1px;
-    text-transform: uppercase; text-decoration: underline;
-  }
-  .back-link:hover { color: var(--gold); }
+
 </style>
 </head>
 <body>
@@ -120,45 +113,24 @@
   </div>
 
   <div class="card">
-    <!-- Step 1: Email + Password -->
-    <div class="step active" id="step1">
-      <div class="card-title">Welcome back</div>
-      <div class="card-sub">Sign in to continue</div>
-      <div class="form-group">
-        <label>Email</label>
-        <input type="email" id="email" placeholder="your@email.com" autocomplete="email">
-      </div>
-      <div class="form-group">
-        <label>Password</label>
-        <input type="password" id="password" placeholder="Enter your password">
-      </div>
-      <button class="btn" id="btn-login" onclick="handleLogin()">Continue</button>
-      <div class="error-msg" id="error1">Incorrect email or password.</div>
+    <div class="card-title">Welcome back</div>
+    <div class="card-sub">Sign in to continue</div>
+    <div class="form-group">
+      <label>Email</label>
+      <input type="email" id="email" placeholder="your@email.com" autocomplete="email">
     </div>
-
-    <!-- Step 2: Verification Code -->
-    <div class="step" id="step2">
-      <div class="card-title">Check your email</div>
-      <div class="card-sub" id="code-sub">We sent a 6-digit code</div>
-      <div class="form-group">
-        <label>Verification Code</label>
-        <input type="text" id="code" placeholder="000000" maxlength="6" autocomplete="one-time-code" style="letter-spacing:6px;font-size:20px;text-align:center">
-      </div>
-      <button class="btn" id="btn-verify" onclick="handleVerify()">Verify & Sign In</button>
-      <div class="error-msg" id="error2">Invalid or expired code. Please try again.</div>
-      <div class="success-msg" id="success2">Code verified! Redirecting...</div>
-      <div style="text-align:center">
-        <span class="back-link" onclick="goBack()">← Back</span>
-      </div>
+    <div class="form-group">
+      <label>Password</label>
+      <input type="password" id="password" placeholder="Enter your password">
     </div>
+    <button class="btn" id="btn-login" onclick="handleLogin()">Sign In</button>
+    <div class="error-msg" id="error1">Incorrect email or password.</div>
   </div>
 
   <div class="footer-note">© Social Remedy · Authorised staff only</div>
 </div>
 
 <script>
-  let pendingEmail = '';
-
   async function handleLogin() {
     const email = document.getElementById('email').value.trim().toLowerCase();
     const password = document.getElementById('password').value;
@@ -186,44 +158,8 @@
     }
   }
 
-  async function handleVerify() {
-    const code = document.getElementById('code').value.trim();
-    const err  = document.getElementById('error2');
-    const succ = document.getElementById('success2');
-    const btn  = document.getElementById('btn-verify');
-    err.style.display = 'none'; succ.style.display = 'none';
-    btn.disabled = true; btn.textContent = 'Verifying...';
-    try {
-      const res = await fetch('/auth/verify', {
-        method: 'POST',
-        headers: {'Content-Type':'application/json'},
-        body: JSON.stringify({email: pendingEmail, code})
-      });
-      const data = await res.json();
-      if (data.ok) {
-        succ.style.display = 'block';
-        setTimeout(() => { window.location.href = data.url; }, 1000);
-      } else {
-        err.style.display = 'block';
-        btn.disabled = false; btn.textContent = 'Verify & Sign In';
-      }
-    } catch(e) {
-      err.style.display = 'block';
-      btn.disabled = false; btn.textContent = 'Verify & Sign In';
-    }
-  }
-
-  function goBack() {
-    document.getElementById('step2').classList.remove('active');
-    document.getElementById('step1').classList.add('active');
-    document.getElementById('error1').style.display = 'none';
-    document.getElementById('code').value = '';
-  }
-
   document.addEventListener('keydown', e => {
-    if (e.key !== 'Enter') return;
-    if (document.getElementById('step1').classList.contains('active')) handleLogin();
-    else handleVerify();
+    if (e.key === 'Enter') handleLogin();
   });
 </script>
 </body>
