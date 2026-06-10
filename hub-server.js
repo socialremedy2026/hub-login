@@ -1,8 +1,6 @@
 const http = require('http');
 const fs   = require('fs');
 const path = require('path');
-const nodemailer = require('nodemailer');
-const crypto = require('crypto');
 
 const LOGIN_HTML  = path.join(__dirname, 'hub-login.html');
 const SELECT_HTML = path.join(__dirname, 'hub-select.html');
@@ -10,33 +8,20 @@ const DASH_HTML   = path.join(__dirname, 'hub-dashboard.html');
 
 // ── User config ──────────────────────────────────────────────
 const USERS = {
-  'info@socialremedy.com.au':    { password: process.env.PASS_ARDEN,    url: 'http://lz131lg6ykxav5xdpqsmmmho.170.64.219.239.sslip.io/' },
-  'hello@socialremedy.com.au':   { password: process.env.PASS_JULIA,    url: 'http://hm4zp8jkuc3qz0ayiw7uhcks.170.64.219.239.sslip.io/' },
-  'hello@b3.fitness':            { password: process.env.PASS_BRIONY,   url: 'http://kofzgzd044zhbdltv8a4q0qi.170.64.219.239.sslip.io/' },
-  'benny@socialremedy.com.au':   { password: process.env.PASS_BENNY,    url: '/select' },
-  'studio@socialremedy.com.au':  { password: process.env.PASS_NATALYA,  url: 'http://y10kl24t4oq7ght4jx21cal1.170.64.219.239.sslip.io/' },
+  'info@socialremedy.com.au':    { password: process.env.PASS_ARDEN,   proxy: 'arden' },
+  'hello@socialremedy.com.au':   { password: process.env.PASS_JULIA,   proxy: 'ops' },
+  'hello@b3.fitness':            { password: process.env.PASS_BRIONY,  proxy: 'b3' },
+  'benny@socialremedy.com.au':   { password: process.env.PASS_BENNY,   proxy: null, url: '/select' },
+  'studio@socialremedy.com.au':  { password: process.env.PASS_NATALYA, proxy: 'natalya' },
 };
 
-// ── Gmail config ─────────────────────────────────────────────
-const transporter = nodemailer.createTransport({
-  host: 'smtp.gmail.com',
-  port: 587,
-  secure: false,
-  requireTLS: true,
-  auth: {
-    user: 'hello@socialremedy.com.au',
-    pass: 'qqjpkymxhbwqgra',
-  },
-  tls: { rejectUnauthorized: false }
-});
-
-// ── In-memory code store ──────────────────────────────────────
-// { email: { code, expires } }
-const pendingCodes = {};
-
-function generateCode() {
-  return Math.floor(100000 + Math.random() * 900000).toString();
-}
+// ── Proxy targets (internal ports) ───────────────────────────
+const PROXY_TARGETS = {
+  arden:   { host: 'localhost', port: 3003 },
+  ops:     { host: 'localhost', port: 3001 },
+  b3:      { host: 'localhost', port: 3002 },
+  natalya: { host: 'localhost', port: 3005 },
+};
 
 function parseBody(req) {
   return new Promise((resolve, reject) => {
@@ -51,6 +36,36 @@ function parseBody(req) {
 function json(res, status, data) {
   res.writeHead(status, { 'Content-Type': 'application/json' });
   res.end(JSON.stringify(data));
+}
+
+function proxyRequest(req, res, target, stripPrefix) {
+  let targetPath = req.url;
+  if (stripPrefix) targetPath = targetPath.slice(stripPrefix.length) || '/';
+
+  const options = {
+    hostname: target.host,
+    port: target.port,
+    path: targetPath,
+    method: req.method,
+    headers: { ...req.headers, host: `${target.host}:${target.port}` },
+  };
+
+  const proxyReq = http.request(options, proxyRes => {
+    // Remove X-Frame-Options so iframe works
+    const headers = { ...proxyRes.headers };
+    delete headers['x-frame-options'];
+    delete headers['content-security-policy'];
+    res.writeHead(proxyRes.statusCode, headers);
+    proxyRes.pipe(res);
+  });
+
+  proxyReq.on('error', err => {
+    console.error('Proxy error:', err);
+    res.writeHead(502);
+    res.end('Dashboard unavailable');
+  });
+
+  req.pipe(proxyReq);
 }
 
 // ── Server ────────────────────────────────────────────────────
@@ -77,7 +92,16 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
-  // Step 1: Check email + password — redirect directly
+  // Proxy dashboard routes
+  for (const [name, target] of Object.entries(PROXY_TARGETS)) {
+    const prefix = `/proxy/${name}`;
+    if (req.url === prefix || req.url.startsWith(prefix + '/') || req.url.startsWith(prefix + '?')) {
+      proxyRequest(req, res, target, prefix);
+      return;
+    }
+  }
+
+  // Login
   if (req.method === 'POST' && req.url === '/auth/login') {
     try {
       const { email, password } = await parseBody(req);
@@ -85,27 +109,12 @@ const server = http.createServer(async (req, res) => {
       if (!user || user.password !== password) {
         return json(res, 401, { ok: false });
       }
-      json(res, 200, { ok: true, url: user.url });
+      if (user.url) {
+        return json(res, 200, { ok: true, url: user.url });
+      }
+      json(res, 200, { ok: true, url: `/proxy/${user.proxy}/` });
     } catch(e) {
       console.error('Login error:', e);
-      json(res, 500, { ok: false });
-    }
-    return;
-  }
-
-  // Step 2: Verify code
-  if (req.method === 'POST' && req.url === '/auth/verify') {
-    try {
-      const { email, code } = await parseBody(req);
-      const pending = pendingCodes[email?.toLowerCase()];
-      if (!pending || pending.code !== code || Date.now() > pending.expires) {
-        return json(res, 401, { ok: false });
-      }
-      // Code is valid — clear it and redirect
-      delete pendingCodes[email.toLowerCase()];
-      const user = USERS[email.toLowerCase()];
-      json(res, 200, { ok: true, url: user.url });
-    } catch(e) {
       json(res, 500, { ok: false });
     }
     return;
