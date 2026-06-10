@@ -1,12 +1,13 @@
 {
   "name": "hub-login",
   "version": "1.0.0",
-  "description": "Social Remedy Staff Hub login with 2FA",
+  "description": "Social Remedy Staff Hub",
   "main": "hub-server.js",
   "scripts": {
     "start": "node hub-server.js"
   },
   "dependencies": {
-    "nodemailer": "^6.9.13"
+    "nodemailer": "^6.9.13",
+    "express": "^5.2.1"
   }
 }
